@@ -1,0 +1,160 @@
+---
+title: "Adidas"
+output: html_document
+date: "2022-10-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Loading the packages
+library(ggplot2)
+library(dplyr)
+library(corrplot)
+library(Rmisc)
+library(ragtop)
+library(readxl)
+library(fastDummies)
+library(class)
+library(glmnet)
+library(ranger)
+library(caTools)
+library(vip)
+library(devtools)
+library(usdata)
+library(usmap)
+library(maps)
+library(tidyverse)
+library(urbnmapr)
+library(mapview)
+library(ggmap)
+library(RColorBrewer)
+```
+
+
+
+```{r}
+adidas <- read.csv(file.choose(), header = TRUE)
+summary(adidas)
+
+```
+
+Data Cleaning - exclude things unrealted: url, sku, original_price, availability(all of the products are in stock), currency(all products are in USD), source(All come from same source), source_website, brand, country, language
+```{r}
+drop <- c("url","sku","original_price","currency", "availability", "source", "source_website", "brand", "country", "language", "images", "crawled_at", "description", "name", "breadcrumbs", "index")
+adidas2 <- adidas[,!(names(adidas) %in% drop)]
+
+charV <- which(sapply(adidas2, is.character))
+charVnames <- names(charV)
+length(charVnames) 
+numV <- which(sapply(adidas2, is.numeric))
+length(numV) 
+
+#change categorical variables into factors
+for (i in 1:length(charVnames)) {
+      adidas2[,charV[i]] = as.factor(adidas2[,charV[i]])
+}
+
+
+#creating dummy variables
+adidas_dum <- dummy_cols(adidas2, remove_first_dummy = TRUE)
+adidas_dum <- adidas_dum %>%
+      select(-charVnames)
+
+#creating interaction
+X <- model.matrix (selling_price ~ (.)*category -1, data = adidas2)
+X <- cbind("selling_price" = adidas2$selling_price, X)
+
+summary(X)
+```
+
+correlations between variables
+```{r}
+corAll <- cor(X, use = "pairwise.complete.obs")
+corAll_sort <- as.matrix(sort(corAll[,'selling_price'], decreasing = TRUE))
+corAll_high <- names(which(apply(corAll_sort, 1, function(x) abs(x)>0.3)))
+corAll_high
+
+corAll1 <- corAll[corAll_high,corAll_high]
+corrplot.mixed(corAll1, tl.col="black", tl.pos = "lt", number.cex = 0.7)
+```
+
+density plot of selling price for each color
+```{r}
+Col <- adidas2 %>%
+      group_by(color) %>%
+      summarize_at(vars(selling_price), list(avgprice = mean))
+
+ggplot(Col, aes(x = color, y = avgprice, fill = color)) +
+  geom_col()+
+  scale_fill_manual(values = c("gray","gray","gray","red","yellow","yellow","gray","gray","gray","yellow","gray","gray","gray","gray","red","red","gray","gray")) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+ggplot(adidas2, aes(x = color, fill = category)) +
+      geom_bar(position = "fill") + 
+      theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+Cat <- adidas2 %>%
+      group_by(category) %>%
+      summarize_at(vars(selling_price), list(avgprice = mean))
+ggplot(Cat, aes(x = category, y = avgprice)) +
+      geom_col() +
+      theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+ggplot(adidas2, aes(x = selling_price, color = category)) +
+      geom_density()
+```
+
+Accessories
+```{r}
+ColAcc <- adidas2 %>%
+      filter(category == "Accessories") %>%
+      group_by(color) %>%
+      summarize_at(vars(selling_price), list(avgprice = mean))
+ggplot(ColAcc, aes(x = color, y = avgprice)) +
+      geom_col() +
+      theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+```
+
+
+Clothing
+```{r}
+ColClo <- adidas2 %>%
+      filter(category == "Clothing") %>%
+      group_by(color) %>%
+      summarize_at(vars(selling_price), list(avgprice = mean))
+ggplot(ColClo, aes(x = color, y = avgprice)) +
+      geom_col() +
+      theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+```
+
+
+Shoes
+```{r}
+ColShoes <- adidas2 %>%
+      filter(category == "Shoes") %>%
+      group_by(color) %>%
+      summarize_at(vars(selling_price), list(avgprice = mean))
+ggplot(ColShoes, aes(x = color, y = avgprice)) +
+      geom_col() +
+      theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+```
+
+
+
+density plot across all inputs with median
+```{r}
+medianSit <- median(adidas2$selling_price) #store median
+ggplot(adidas2, aes(x = selling_price)) +
+      geom_density() +
+      geom_vline(xintercept = medianSit, size = 1, color = "red") +
+      geom_text(aes(x = medianSit + 5, label = paste0("median\n", medianSit), y = 5e-04)) 
+
+ggplot(adidas, aes(x= selling_price, y = average_rating)) +
+      geom_point(alpha = 0.2) +
+      geom_jitter() +
+      facet_wrap(~ category)
+```
+
+
